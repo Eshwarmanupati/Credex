@@ -4,19 +4,27 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuditStore } from '@/store/audit-store';
 import { useRouter } from 'next/navigation';
-import { getAllTools } from '@/lib/pricing-data';
-import { TOOLS } from '@/lib/pricing-data';
-import type { ToolId, UseCase } from '@/types';
+import { getAllTools, TOOLS } from '@/lib/pricing-data';
+import type { UseCase } from '@/types';
+import { ToolIcon } from '@/components/ui/tool-icon';
+import { UseCaseIcon } from '@/components/ui/usecase-icon';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const allTools = getAllTools();
 
 const useCaseOptions: { value: UseCase; label: string }[] = [
-  { value: 'coding', label: '💻 Coding' },
-  { value: 'writing', label: '✍️ Writing' },
-  { value: 'research', label: '🔬 Research' },
-  { value: 'data_analysis', label: '📊 Data Analysis' },
-  { value: 'customer_support', label: '🎧 Support' },
-  { value: 'general', label: '🌐 General' },
+  { value: 'coding', label: 'Coding' },
+  { value: 'writing', label: 'Writing' },
+  { value: 'research', label: 'Research' },
+  { value: 'data_analysis', label: 'Data Analysis' },
+  { value: 'customer_support', label: 'Support' },
+  { value: 'general', label: 'General' },
 ];
 
 const stepVariants = {
@@ -29,7 +37,7 @@ export default function AuditPage() {
   const router = useRouter();
   const {
     selectedTools, toggleTool, toolEntries, updateToolEntry,
-    currentStep, nextStep, prevStep, setResult, isLoading, setLoading, setError, error,
+    currentStep, nextStep, prevStep, setResult, setLoading, setError, error,
   } = useAuditStore();
 
   const [submitting, setSubmitting] = useState(false);
@@ -59,7 +67,6 @@ export default function AuditPage() {
       const data = await res.json();
       setResult(data.result, data.aiSummary, data.shareSlug);
       
-      // Save local fallback to localStorage for seamless local/offline execution
       try {
         const localRecord = {
           id: `local_${data.shareSlug}`,
@@ -72,6 +79,7 @@ export default function AuditPage() {
           recommendations: data.result.recommendations,
           aiSummary: data.aiSummary,
           healthScore: data.result.healthScore,
+          leadId: null,
           createdAt: new Date().toISOString(),
         };
         localStorage.setItem(`trim_audit_${data.shareSlug}`, JSON.stringify(localRecord));
@@ -90,7 +98,6 @@ export default function AuditPage() {
   return (
     <main className="min-h-screen flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-2xl">
-        {/* Progress */}
         <div className="flex items-center gap-2 mb-8">
           {['Select Tools', 'Configure', 'Review'].map((label, i) => (
             <div key={label} className="flex items-center gap-2 flex-1">
@@ -110,7 +117,6 @@ export default function AuditPage() {
         </div>
 
         <AnimatePresence mode="wait">
-          {/* Step 1: Tool Selection */}
           {currentStep === 0 && (
             <motion.div key="step1" variants={stepVariants} initial="enter" animate="center" exit="exit" transition={{ duration: 0.2 }}>
               <h2 className="text-2xl font-bold mb-2">Which AI tools does your team use?</h2>
@@ -129,7 +135,9 @@ export default function AuditPage() {
                           : 'border-border bg-card hover:border-primary/40'
                       }`}
                     >
-                      <div className="text-2xl mb-1">{tool.icon}</div>
+                      <div className="mb-2 text-muted-foreground group-hover:text-primary">
+                        <ToolIcon toolId={tool.id} className="w-6 h-6" />
+                      </div>
                       <div className="font-medium text-sm">{tool.name}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">{tool.category.toUpperCase()}</div>
                     </button>
@@ -149,7 +157,6 @@ export default function AuditPage() {
             </motion.div>
           )}
 
-          {/* Step 2: Configure each tool */}
           {currentStep === 1 && (
             <motion.div key="step2" variants={stepVariants} initial="enter" animate="center" exit="exit" transition={{ duration: 0.2 }}>
               <h2 className="text-2xl font-bold mb-2">Configure your tools</h2>
@@ -161,66 +168,97 @@ export default function AuditPage() {
                   return (
                     <div key={entry.toolId} className="p-4 rounded-xl border border-border bg-card space-y-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-xl">{toolMeta.icon}</span>
+                        <ToolIcon toolId={entry.toolId} className="w-5 h-5 text-muted-foreground" />
                         <h3 className="font-semibold">{toolMeta.name}</h3>
                       </div>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {/* Plan */}
                         <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">Plan</label>
-                          <select
+                          <label htmlFor={`plan-${entry.toolId}`} className="text-xs text-muted-foreground mb-1 block">Plan</label>
+                          <Select
                             value={entry.planId}
-                            onChange={(e) => updateToolEntry(i, { planId: e.target.value })}
-                            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+                            onValueChange={(val) => {
+                              const plan = toolMeta.plans.find((p) => p.planId === val);
+                              const pricePerSeat = plan ? plan.pricePerSeat : 0;
+                              updateToolEntry(i, {
+                                planId: val ?? undefined,
+                                monthlySpend: pricePerSeat * entry.seats
+                              });
+                            }}
                           >
-                            <option value="">Select plan</option>
-                            {toolMeta.plans.map((p) => (
-                              <option key={p.planId} value={p.planId}>
-                                {p.planName} {p.pricePerSeat > 0 ? `($${p.pricePerSeat}/seat)` : ''}
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger id={`plan-${entry.toolId}`} className="w-full flex h-9">
+                              <SelectValue placeholder="Select plan" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-popover border border-border text-popover-foreground rounded-lg shadow-lg py-1">
+                              {toolMeta.plans.map((p) => (
+                                <SelectItem
+                                  key={p.planId}
+                                  value={p.planId}
+                                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer rounded-md m-1"
+                                >
+                                  <span>{p.planName} {p.pricePerSeat > 0 ? `($${p.pricePerSeat}/seat)` : ''}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
 
-                        {/* Seats */}
                         <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">Seats</label>
+                          <label htmlFor={`seats-${entry.toolId}`} className="text-xs text-muted-foreground mb-1 block">Seats</label>
                           <input
+                            id={`seats-${entry.toolId}`}
                             type="number"
                             min={1}
                             max={10000}
                             value={entry.seats}
-                            onChange={(e) => updateToolEntry(i, { seats: Math.max(1, parseInt(e.target.value) || 1) })}
-                            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+                            onChange={(e) => {
+                              const newSeats = Math.max(1, parseInt(e.target.value) || 1);
+                              const plan = toolMeta.plans.find((p) => p.planId === entry.planId);
+                              const pricePerSeat = plan ? plan.pricePerSeat : 0;
+                              updateToolEntry(i, {
+                                seats: newSeats,
+                                monthlySpend: pricePerSeat * newSeats
+                              });
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm h-9"
                           />
                         </div>
 
-                        {/* Monthly Spend */}
                         <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">$/month</label>
+                          <label htmlFor={`spend-${entry.toolId}`} className="text-xs text-muted-foreground mb-1 block">$/month</label>
                           <input
+                            id={`spend-${entry.toolId}`}
                             type="number"
                             min={0}
                             step={1}
                             value={entry.monthlySpend}
                             onChange={(e) => updateToolEntry(i, { monthlySpend: Math.max(0, parseFloat(e.target.value) || 0) })}
-                            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+                            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm h-9"
                           />
                         </div>
 
-                        {/* Use Case */}
                         <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">Use Case</label>
-                          <select
+                          <label htmlFor={`usecase-${entry.toolId}`} className="text-xs text-muted-foreground mb-1 block">Use Case</label>
+                          <Select
                             value={entry.useCase}
-                            onChange={(e) => updateToolEntry(i, { useCase: e.target.value as UseCase })}
-                            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+                            onValueChange={(val) => { if (val) updateToolEntry(i, { useCase: val as UseCase }); }}
                           >
-                            {useCaseOptions.map((uc) => (
-                              <option key={uc.value} value={uc.value}>{uc.label}</option>
-                            ))}
-                          </select>
+                            <SelectTrigger id={`usecase-${entry.toolId}`} className="w-full flex h-9">
+                              <SelectValue placeholder="Select usecase" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-popover border border-border text-popover-foreground rounded-lg shadow-lg py-1">
+                              {useCaseOptions.map((uc) => (
+                                <SelectItem
+                                  key={uc.value}
+                                  value={uc.value}
+                                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer rounded-md m-1"
+                                >
+                                  <UseCaseIcon useCase={uc.value} className="w-4 h-4 text-muted-foreground shrink-0" />
+                                  <span>{uc.label}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     </div>
@@ -243,7 +281,6 @@ export default function AuditPage() {
             </motion.div>
           )}
 
-          {/* Step 3: Review & Submit */}
           {currentStep === 2 && (
             <motion.div key="step3" variants={stepVariants} initial="enter" animate="center" exit="exit" transition={{ duration: 0.2 }}>
               <h2 className="text-2xl font-bold mb-2">Review your AI stack</h2>
@@ -260,7 +297,7 @@ export default function AuditPage() {
                   return (
                     <div key={entry.toolId} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
                       <div className="flex items-center gap-3">
-                        <span className="text-lg">{toolMeta.icon}</span>
+                        <ToolIcon toolId={entry.toolId} className="w-5 h-5 text-muted-foreground" />
                         <div>
                           <div className="font-medium text-sm">{toolMeta.name}</div>
                           <div className="text-xs text-muted-foreground">{plan?.planName || entry.planId} · {entry.seats} seat(s)</div>

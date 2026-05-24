@@ -1,18 +1,4 @@
--- =============================================================================
--- Trim.ai — Initial Database Schema
--- =============================================================================
--- Run this migration in your Supabase SQL editor or via supabase db push.
--- Creates the core `audits` and `leads` tables with proper indexes.
--- =============================================================================
-
--- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- ---------------------------------------------------------------------------
--- Table: audits
--- ---------------------------------------------------------------------------
--- Stores every audit submission: raw input, computed results, AI summary.
--- share_slug enables public sharing via /report/[slug].
 
 CREATE TABLE IF NOT EXISTS audits (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -34,11 +20,6 @@ CREATE TABLE IF NOT EXISTS audits (
 CREATE INDEX IF NOT EXISTS idx_audits_share_slug ON audits(share_slug);
 CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at DESC);
 
--- ---------------------------------------------------------------------------
--- Table: leads
--- ---------------------------------------------------------------------------
--- Captures contact information for follow-up outreach on high-savings audits.
-
 CREATE TABLE IF NOT EXISTS leads (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email             VARCHAR(320) NOT NULL,
@@ -54,17 +35,10 @@ CREATE TABLE IF NOT EXISTS leads (
 CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
 CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at DESC);
 
--- ---------------------------------------------------------------------------
--- Add foreign key from audits to leads (after leads table exists)
--- ---------------------------------------------------------------------------
 ALTER TABLE audits
   ADD CONSTRAINT fk_audits_lead_id
   FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL;
 
--- ---------------------------------------------------------------------------
--- Row Level Security (RLS)
--- ---------------------------------------------------------------------------
--- Audits: public read by slug (for shared reports), insert via service role
 ALTER TABLE audits ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Public can read audits by slug"
@@ -79,7 +53,6 @@ CREATE POLICY "Service role can update audits"
   ON audits FOR UPDATE
   USING (true);
 
--- Leads: insert only via service role, no public read
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Service role can insert leads"

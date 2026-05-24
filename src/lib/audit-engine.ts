@@ -1,10 +1,3 @@
-// =============================================================================
-// Trim.ai — Deterministic Audit Rules Engine
-// =============================================================================
-// Pure TypeScript. No LLM calls. Fully unit-testable.
-// Takes structured input, returns structured recommendations.
-// =============================================================================
-
 import type {
   ToolEntry,
   AuditInput,
@@ -16,31 +9,25 @@ import type {
   Severity,
   ToolId,
 } from '@/types';
-import { TOOLS, getPlan, getCheapestPaidPlan, isSameCategory } from './pricing-data';
+import { TOOLS, getPlan } from './pricing-data';
 import { clamp } from './utils';
 
-let recCounter = 0;
-function nextId(): string {
-  return `rec_${++recCounter}`;
+function createIdGenerator() {
+  let counter = 0;
+  return () => `rec_${++counter}`;
 }
 
-// ---------------------------------------------------------------------------
-// Main Entry Point
-// ---------------------------------------------------------------------------
-
 export function runAudit(input: AuditInput): AuditResult {
-  recCounter = 0;
+  const nextId = createIdGenerator();
   const recommendations: Recommendation[] = [];
 
-  // Run all rule categories
-  recommendations.push(...ruleSeatTierMismatch(input.tools));
-  recommendations.push(...ruleRedundantSubscriptions(input.tools));
-  recommendations.push(...ruleApiVsSubscription(input.tools));
-  recommendations.push(...ruleOverpoweredPlan(input.tools));
-  recommendations.push(...ruleCheaperAlternatives(input.tools));
-  recommendations.push(...ruleVolumeConsolidation(input.tools));
+  recommendations.push(...ruleSeatTierMismatch(input.tools, nextId));
+  recommendations.push(...ruleRedundantSubscriptions(input.tools, nextId));
+  recommendations.push(...ruleApiVsSubscription(input.tools, nextId));
+  recommendations.push(...ruleOverpoweredPlan(input.tools, nextId));
+  recommendations.push(...ruleCheaperAlternatives(input.tools, nextId));
+  recommendations.push(...ruleVolumeConsolidation(input.tools, nextId));
 
-  // Calculate totals
   const totalCurrentSpend = input.tools.reduce((sum, t) => sum + t.monthlySpend, 0);
   const totalMonthlySavings = recommendations.reduce((sum, r) => sum + r.monthlySavings, 0);
   const totalOptimizedSpend = Math.max(0, totalCurrentSpend - totalMonthlySavings);
@@ -48,13 +35,8 @@ export function runAudit(input: AuditInput): AuditResult {
     ? (totalMonthlySavings / totalCurrentSpend) * 100
     : 0;
 
-  // Build per-tool breakdown
   const toolBreakdown = buildToolBreakdown(input.tools, recommendations);
-
-  // Detect redundancies
   const redundancies = detectRedundancies(input.tools);
-
-  // Calculate health score
   const healthScore = calculateHealthScore(
     savingsPercentage,
     redundancies.length,
@@ -77,22 +59,17 @@ export function runAudit(input: AuditInput): AuditResult {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Rule 1: Seat-Tier Mismatch
-// ---------------------------------------------------------------------------
-
-function ruleSeatTierMismatch(tools: ToolEntry[]): Recommendation[] {
+function ruleSeatTierMismatch(tools: ToolEntry[], nextId: () => string): Recommendation[] {
   const recs: Recommendation[] = [];
 
   for (const entry of tools) {
     const plan = getPlan(entry.toolId, entry.planId);
     if (!plan) continue;
 
-    // Cursor Business with small team → Pro
     if (entry.planId === 'cursor_business' && entry.seats < 3) {
-      const savings = (plan.pricePerSeat - 20) * entry.seats;
-      if (savings > 0) {
-        recs.push(makeRec({
+      const optimizedCost = 20 * entry.seats;
+      if (entry.monthlySpend > optimizedCost) {
+        recs.push(makeRec(nextId, {
           type: 'downgrade_plan',
           severity: 'high',
           toolId: entry.toolId,
@@ -101,17 +78,16 @@ function ruleSeatTierMismatch(tools: ToolEntry[]): Recommendation[] {
           currentPlan: plan.planName,
           recommendedPlan: 'Pro',
           currentMonthlyCost: entry.monthlySpend,
-          optimizedMonthlyCost: 20 * entry.seats,
-          reasoning: `Business ($40/seat) vs Pro ($20/seat). Admin dashboard and SSO are unnecessary for teams under 3.`,
+          optimizedMonthlyCost: optimizedCost,
+          reasoning: 'Business ($40/seat) vs Pro ($20/seat). Admin dashboard and SSO are unnecessary for teams under 3.',
         }));
       }
     }
 
-    // Copilot Enterprise with small team → Business
     if (entry.planId === 'copilot_enterprise' && entry.seats < 10) {
-      const savings = (plan.pricePerSeat - 19) * entry.seats;
-      if (savings > 0) {
-        recs.push(makeRec({
+      const optimizedCost = 19 * entry.seats;
+      if (entry.monthlySpend > optimizedCost) {
+        recs.push(makeRec(nextId, {
           type: 'downgrade_plan',
           severity: 'high',
           toolId: entry.toolId,
@@ -120,46 +96,40 @@ function ruleSeatTierMismatch(tools: ToolEntry[]): Recommendation[] {
           currentPlan: plan.planName,
           recommendedPlan: 'Business',
           currentMonthlyCost: entry.monthlySpend,
-          optimizedMonthlyCost: 19 * entry.seats,
-          reasoning: `Enterprise ($39/seat) vs Business ($19/seat). Knowledge bases and custom models need 10+ seats to justify cost.`,
+          optimizedMonthlyCost: optimizedCost,
+          reasoning: 'Enterprise ($39/seat) vs Business ($19/seat). Knowledge bases and custom models need 10+ seats to justify cost.',
         }));
       }
     }
 
-    // ChatGPT Plus individual seats > 3 → Team
     if (entry.planId === 'chatgpt_plus' && entry.seats > 3) {
-      const teamCost = 25 * entry.seats;
-      const currentCost = 20 * entry.seats;
-      // Team is slightly more expensive per seat but has better features
-      // Only recommend if they're managing separate accounts
-      recs.push(makeRec({
+      recs.push(makeRec(nextId, {
         type: 'consolidate_seats',
-        severity: 'medium',
+        severity: 'info',
         toolId: entry.toolId,
-        title: 'Consolidate ChatGPT seats to a Team plan',
-        description: `Managing ${entry.seats} separate Plus subscriptions creates admin overhead. Team plan adds shared workspace and no-training guarantee for just $5/seat more.`,
+        title: 'Consider consolidating ChatGPT seats to a Team plan',
+        description: `Managing ${entry.seats} separate Plus subscriptions creates admin overhead. Team plan adds shared workspace, higher caps, and a no-training guarantee for $5/seat more.`,
         currentPlan: plan.planName,
         recommendedPlan: 'Team',
         currentMonthlyCost: entry.monthlySpend,
-        optimizedMonthlyCost: teamCost,
+        optimizedMonthlyCost: entry.monthlySpend,
         reasoning: `Individual Plus seats lack admin controls. Team ($25/seat) gives higher caps, shared workspace, and data privacy — valuable for ${entry.seats}+ users.`,
       }));
     }
 
-    // Windsurf Team with < 3 seats → Pro
     if (entry.planId === 'windsurf_team' && entry.seats < 3) {
-      const savings = (plan.pricePerSeat - 15) * entry.seats;
-      if (savings > 0) {
-        recs.push(makeRec({
+      const optimizedCost = 15 * entry.seats;
+      if (entry.monthlySpend > optimizedCost) {
+        recs.push(makeRec(nextId, {
           type: 'downgrade_plan',
           severity: 'medium',
           toolId: entry.toolId,
           title: 'Windsurf Team is unnecessary for small teams',
-          description: `Pro plan covers all AI features. Team management only pays off at 3+ seats.`,
+          description: 'Pro plan covers all AI features. Team management only pays off at 3+ seats.',
           currentPlan: plan.planName,
           recommendedPlan: 'Pro',
           currentMonthlyCost: entry.monthlySpend,
-          optimizedMonthlyCost: 15 * entry.seats,
+          optimizedMonthlyCost: optimizedCost,
           reasoning: `Team ($35/seat) vs Pro ($15/seat). Team management features are irrelevant for ${entry.seats} user(s).`,
         }));
       }
@@ -169,26 +139,20 @@ function ruleSeatTierMismatch(tools: ToolEntry[]): Recommendation[] {
   return recs;
 }
 
-// ---------------------------------------------------------------------------
-// Rule 2: Redundant Subscriptions
-// ---------------------------------------------------------------------------
-
-function ruleRedundantSubscriptions(tools: ToolEntry[]): Recommendation[] {
+function ruleRedundantSubscriptions(tools: ToolEntry[], nextId: () => string): Recommendation[] {
   const recs: Recommendation[] = [];
   const paidTools = tools.filter((t) => t.monthlySpend > 0);
 
-  // Check for IDE overlap (cursor + copilot + windsurf)
   const ideTools = paidTools.filter((t) =>
     ['cursor', 'github_copilot', 'windsurf'].includes(t.toolId)
   );
   if (ideTools.length > 1) {
-    // Find cheapest and recommend consolidating
     const sorted = [...ideTools].sort((a, b) => a.monthlySpend - b.monthlySpend);
-    const keeper = sorted[sorted.length - 1]; // keep the most invested
+    const keeper = sorted[sorted.length - 1];
     for (const tool of sorted.slice(0, -1)) {
       const toolMeta = TOOLS[tool.toolId];
       const keeperMeta = TOOLS[keeper.toolId];
-      recs.push(makeRec({
+      recs.push(makeRec(nextId, {
         type: 'remove_redundancy',
         severity: 'high',
         toolId: tool.toolId,
@@ -203,7 +167,6 @@ function ruleRedundantSubscriptions(tools: ToolEntry[]): Recommendation[] {
     }
   }
 
-  // Check for chat overlap (claude + chatgpt)
   const chatTools = paidTools.filter((t) =>
     ['claude', 'chatgpt'].includes(t.toolId) && !t.planId.includes('free')
   );
@@ -213,7 +176,7 @@ function ruleRedundantSubscriptions(tools: ToolEntry[]): Recommendation[] {
     const otherTool = chatTools.find((t) => t.toolId !== cheaper.toolId)!;
     const otherMeta = TOOLS[otherTool.toolId];
 
-    recs.push(makeRec({
+    recs.push(makeRec(nextId, {
       type: 'remove_redundancy',
       severity: 'medium',
       toolId: cheaper.toolId,
@@ -230,18 +193,14 @@ function ruleRedundantSubscriptions(tools: ToolEntry[]): Recommendation[] {
   return recs;
 }
 
-// ---------------------------------------------------------------------------
-// Rule 3: API vs Subscription Arbitrage
-// ---------------------------------------------------------------------------
-
-function ruleApiVsSubscription(tools: ToolEntry[]): Recommendation[] {
+function ruleApiVsSubscription(tools: ToolEntry[], nextId: () => string): Recommendation[] {
   const recs: Recommendation[] = [];
 
   const hasOpenAIApi = tools.find((t) => t.toolId === 'openai_api' && t.monthlySpend > 0);
   const hasChatGPTPlus = tools.find((t) => t.toolId === 'chatgpt' && t.planId === 'chatgpt_plus');
 
   if (hasOpenAIApi && hasChatGPTPlus && hasOpenAIApi.monthlySpend > 30) {
-    recs.push(makeRec({
+    recs.push(makeRec(nextId, {
       type: 'switch_to_api',
       severity: 'medium',
       toolId: 'chatgpt',
@@ -259,7 +218,7 @@ function ruleApiVsSubscription(tools: ToolEntry[]): Recommendation[] {
   const hasClaudePro = tools.find((t) => t.toolId === 'claude' && t.planId === 'claude_pro');
 
   if (hasAnthropicApi && hasClaudePro && hasAnthropicApi.monthlySpend > 30) {
-    recs.push(makeRec({
+    recs.push(makeRec(nextId, {
       type: 'switch_to_api',
       severity: 'medium',
       toolId: 'claude',
@@ -276,134 +235,118 @@ function ruleApiVsSubscription(tools: ToolEntry[]): Recommendation[] {
   return recs;
 }
 
-// ---------------------------------------------------------------------------
-// Rule 4: Overpowered Plan
-// ---------------------------------------------------------------------------
-
-function ruleOverpoweredPlan(tools: ToolEntry[]): Recommendation[] {
+function ruleOverpoweredPlan(tools: ToolEntry[], nextId: () => string): Recommendation[] {
   const recs: Recommendation[] = [];
 
   for (const entry of tools) {
-    // Claude Max 20x for non-heavy-research → suggest Max 5x or Pro
     if (entry.planId === 'claude_max_20x' && entry.useCase !== 'research') {
-      recs.push(makeRec({
-        type: 'downgrade_plan',
-        severity: 'high',
-        toolId: entry.toolId,
-        title: 'Claude Max (20x) is excessive for your use case',
-        description: `Max 20x is designed for heavy research workloads. For ${entry.useCase}, Pro or Max 5x provides sufficient capacity.`,
-        currentPlan: 'Max (20x)',
-        recommendedPlan: entry.useCase === 'coding' ? 'Pro' : 'Max (5x)',
-        currentMonthlyCost: entry.monthlySpend,
-        optimizedMonthlyCost: entry.useCase === 'coding' ? 20 * entry.seats : 100 * entry.seats,
-        reasoning: `Max 20x ($200/seat) is for power researchers. ${entry.useCase} workflows rarely exhaust Pro ($20/seat) or Max 5x ($100/seat) limits.`,
-      }));
+      const optimizedCost = entry.useCase === 'coding' ? 20 * entry.seats : 100 * entry.seats;
+      if (entry.monthlySpend > optimizedCost) {
+        recs.push(makeRec(nextId, {
+          type: 'downgrade_plan',
+          severity: 'high',
+          toolId: entry.toolId,
+          title: 'Claude Max (20x) is excessive for your use case',
+          description: `Max 20x is designed for heavy research workloads. For ${entry.useCase}, Pro or Max 5x provides sufficient capacity.`,
+          currentPlan: 'Max (20x)',
+          recommendedPlan: entry.useCase === 'coding' ? 'Pro' : 'Max (5x)',
+          currentMonthlyCost: entry.monthlySpend,
+          optimizedMonthlyCost: optimizedCost,
+          reasoning: `Max 20x ($200/seat) is for power researchers. ${entry.useCase} workflows rarely exhaust Pro ($20/seat) or Max 5x ($100/seat) limits.`,
+        }));
+      }
     }
 
-    // Claude Max 5x for coding/general → suggest Pro
     if (entry.planId === 'claude_max_5x' && ['coding', 'general'].includes(entry.useCase)) {
-      recs.push(makeRec({
-        type: 'downgrade_plan',
-        severity: 'medium',
-        toolId: entry.toolId,
-        title: 'Claude Max (5x) may be more than you need',
-        description: `For ${entry.useCase} tasks, Claude Pro's limits are usually sufficient. Max is better suited for extended research sessions.`,
-        currentPlan: 'Max (5x)',
-        recommendedPlan: 'Pro',
-        currentMonthlyCost: entry.monthlySpend,
-        optimizedMonthlyCost: 20 * entry.seats,
-        reasoning: `Max 5x ($100/seat) vs Pro ($20/seat). Most ${entry.useCase} users don't hit Pro's rate limits.`,
-      }));
-    }
-
-    // Cursor Business for individual dev
-    if (entry.planId === 'cursor_business' && entry.seats === 1) {
-      // Already handled in seat-tier mismatch, but add emphasis for solo devs
+      const optimizedCost = 20 * entry.seats;
+      if (entry.monthlySpend > optimizedCost) {
+        recs.push(makeRec(nextId, {
+          type: 'downgrade_plan',
+          severity: 'medium',
+          toolId: entry.toolId,
+          title: 'Claude Max (5x) may be more than you need',
+          description: `For ${entry.useCase} tasks, Claude Pro's limits are usually sufficient. Max is better suited for extended research sessions.`,
+          currentPlan: 'Max (5x)',
+          recommendedPlan: 'Pro',
+          currentMonthlyCost: entry.monthlySpend,
+          optimizedMonthlyCost: optimizedCost,
+          reasoning: `Max 5x ($100/seat) vs Pro ($20/seat). Most ${entry.useCase} users don't hit Pro's rate limits.`,
+        }));
+      }
     }
   }
 
   return recs;
 }
 
-// ---------------------------------------------------------------------------
-// Rule 5: Cheaper Alternatives
-// ---------------------------------------------------------------------------
-
-function ruleCheaperAlternatives(tools: ToolEntry[]): Recommendation[] {
+function ruleCheaperAlternatives(tools: ToolEntry[], nextId: () => string): Recommendation[] {
   const recs: Recommendation[] = [];
 
   for (const entry of tools) {
-    // Copilot Business → Cursor Pro (cheaper for pure AI coding)
     if (entry.planId === 'copilot_business' && entry.useCase === 'coding') {
-      const savings = (19 - 20) * entry.seats; // Cursor is $1 more but has better AI
-      // Actually suggest only if they don't already have Cursor
       const hasCursor = tools.some((t) => t.toolId === 'cursor' && t.monthlySpend > 0);
-      if (!hasCursor) {
-        recs.push(makeRec({
+      const optimizedCost = 20 * entry.seats;
+      if (!hasCursor && entry.monthlySpend >= optimizedCost) {
+        recs.push(makeRec(nextId, {
           type: 'cheaper_alternative',
           severity: 'low',
           toolId: entry.toolId,
           title: 'Consider Cursor Pro as an alternative to Copilot Business',
-          description: `Cursor Pro ($20/seat) offers a more integrated AI coding experience with inline chat, multi-file edits, and agent mode — at a comparable price to Copilot Business ($19/seat).`,
+          description: 'Cursor Pro ($20/seat) offers a more integrated AI coding experience with inline chat, multi-file edits, and agent mode — at a comparable price to Copilot Business ($19/seat).',
           currentPlan: 'Business',
           recommendedPlan: 'Cursor Pro (alternative)',
           currentMonthlyCost: entry.monthlySpend,
-          optimizedMonthlyCost: 20 * entry.seats,
-          reasoning: `Cursor's AI features (Composer, Agent mode) are more advanced than Copilot for pure coding workflows. Price is comparable at $20 vs $19/seat.`,
+          optimizedMonthlyCost: optimizedCost,
+          reasoning: "Cursor's AI features (Composer, Agent mode) are more advanced than Copilot for pure coding workflows. Price is comparable at $20 vs $19/seat.",
         }));
       }
     }
 
-    // ChatGPT Plus for coding → suggest Claude Pro
     if (entry.planId === 'chatgpt_plus' && entry.useCase === 'coding') {
       const hasClaude = tools.some((t) => t.toolId === 'claude' && t.monthlySpend > 0);
-      if (!hasClaude) {
-        recs.push(makeRec({
+      if (!hasClaude && entry.monthlySpend > 0) {
+        recs.push(makeRec(nextId, {
           type: 'cheaper_alternative',
           severity: 'low',
           toolId: entry.toolId,
           title: 'Claude Pro may be better for coding workflows',
-          description: `Claude excels at code generation, debugging, and technical analysis. At the same price ($20/mo), it may serve your coding use case better.`,
+          description: "Claude excels at code generation, debugging, and technical analysis. At the same price ($20/mo), it may serve your coding use case better.",
           currentPlan: 'Plus',
           recommendedPlan: 'Claude Pro (alternative)',
           currentMonthlyCost: entry.monthlySpend,
           optimizedMonthlyCost: entry.monthlySpend,
-          reasoning: `Claude's Artifacts feature and longer context window make it superior for coding tasks. Same price point as ChatGPT Plus.`,
+          reasoning: "Claude's Artifacts feature and longer context window make it superior for coding tasks. Same price point as ChatGPT Plus.",
         }));
       }
     }
 
-    // Gemini Advanced → suggest free tier if light usage
     if (entry.planId === 'gemini_advanced' && entry.useCase === 'general') {
-      recs.push(makeRec({
-        type: 'downgrade_plan',
-        severity: 'low',
-        toolId: entry.toolId,
-        title: 'Gemini Free may be sufficient for general use',
-        description: `Gemini Advanced mainly adds longer context and Google One storage. For general tasks, the free tier is quite capable.`,
-        currentPlan: 'Advanced',
-        recommendedPlan: 'Free',
-        currentMonthlyCost: entry.monthlySpend,
-        optimizedMonthlyCost: 0,
-        reasoning: `At $20/mo, Advanced is only justified for power users needing Gemini Ultra and extended context. General use rarely hits free-tier limits.`,
-      }));
+      if (entry.monthlySpend > 0) {
+        recs.push(makeRec(nextId, {
+          type: 'downgrade_plan',
+          severity: 'low',
+          toolId: entry.toolId,
+          title: 'Gemini Free may be sufficient for general use',
+          description: 'Gemini Advanced mainly adds longer context and Google One storage. For general tasks, the free tier is quite capable.',
+          currentPlan: 'Advanced',
+          recommendedPlan: 'Free',
+          currentMonthlyCost: entry.monthlySpend,
+          optimizedMonthlyCost: 0,
+          reasoning: 'At $20/mo, Advanced is only justified for power users needing Gemini Ultra and extended context. General use rarely hits free-tier limits.',
+        }));
+      }
     }
   }
 
   return recs;
 }
 
-// ---------------------------------------------------------------------------
-// Rule 6: Volume Consolidation / Credex Hook
-// ---------------------------------------------------------------------------
-
-function ruleVolumeConsolidation(tools: ToolEntry[]): Recommendation[] {
+function ruleVolumeConsolidation(tools: ToolEntry[], nextId: () => string): Recommendation[] {
   const recs: Recommendation[] = [];
   const totalSpend = tools.reduce((sum, t) => sum + t.monthlySpend, 0);
 
-  // High-spend Credex consultation hook
   if (totalSpend > 500) {
-    recs.push(makeRec({
+    recs.push(makeRec(nextId, {
       type: 'credex_consultation',
       severity: 'info',
       toolId: tools[0].toolId,
@@ -413,16 +356,15 @@ function ruleVolumeConsolidation(tools: ToolEntry[]): Recommendation[] {
       recommendedPlan: 'Credex Enterprise Consultation',
       currentMonthlyCost: totalSpend,
       optimizedMonthlyCost: Math.round(totalSpend * 0.8),
-      reasoning: `Teams spending $500+/mo qualify for enterprise pricing negotiations. Credex specialists can help secure volume discounts and consolidated billing.`,
+      reasoning: 'Teams spending $500+/mo qualify for enterprise pricing negotiations. Credex specialists can help secure volume discounts and consolidated billing.',
     }));
   }
 
-  // Multiple API tools → suggest consolidation
   const apiTools = tools.filter((t) => ['openai_api', 'anthropic_api'].includes(t.toolId) && t.monthlySpend > 0);
   if (apiTools.length > 1) {
     const totalApiSpend = apiTools.reduce((sum, t) => sum + t.monthlySpend, 0);
     if (totalApiSpend > 100) {
-      recs.push(makeRec({
+      recs.push(makeRec(nextId, {
         type: 'model_optimization',
         severity: 'medium',
         toolId: 'openai_api',
@@ -432,7 +374,7 @@ function ruleVolumeConsolidation(tools: ToolEntry[]): Recommendation[] {
         recommendedPlan: 'Tiered model routing',
         currentMonthlyCost: totalApiSpend,
         optimizedMonthlyCost: Math.round(totalApiSpend * 0.5),
-        reasoning: `80% of API calls don't need frontier models. Using GPT-4o-mini ($0.15/1M tokens) instead of GPT-4o ($2.50/1M) for simple tasks slashes costs.`,
+        reasoning: "80% of API calls don't need frontier models. Using GPT-4o-mini ($0.15/1M tokens) instead of GPT-4o ($2.50/1M) for simple tasks slashes costs.",
       }));
     }
   }
@@ -440,32 +382,26 @@ function ruleVolumeConsolidation(tools: ToolEntry[]): Recommendation[] {
   return recs;
 }
 
-// ---------------------------------------------------------------------------
-// Redundancy Detection
-// ---------------------------------------------------------------------------
-
 function detectRedundancies(tools: ToolEntry[]): RedundancyFlag[] {
   const flags: RedundancyFlag[] = [];
   const paidTools = tools.filter((t) => t.monthlySpend > 0);
 
-  // IDE redundancies
   const ideTools = paidTools.filter((t) => ['cursor', 'github_copilot', 'windsurf'].includes(t.toolId));
   if (ideTools.length > 1) {
     const cheapest = ideTools.reduce((a, b) => a.monthlySpend <= b.monthlySpend ? a : b);
     flags.push({
       tools: ideTools.map((t) => t.toolId),
-      reason: `Multiple AI code editors active. Features overlap significantly.`,
+      reason: 'Multiple AI code editors active. Features overlap significantly.',
       potentialSavings: cheapest.monthlySpend,
     });
   }
 
-  // Chat redundancies
   const chatTools = paidTools.filter((t) => ['claude', 'chatgpt', 'gemini'].includes(t.toolId));
   if (chatTools.length > 1) {
     const cheapest = chatTools.reduce((a, b) => a.monthlySpend <= b.monthlySpend ? a : b);
     flags.push({
       tools: chatTools.map((t) => t.toolId),
-      reason: `Multiple AI chat assistants with overlapping capabilities.`,
+      reason: 'Multiple AI chat assistants with overlapping capabilities.',
       potentialSavings: cheapest.monthlySpend,
     });
   }
@@ -473,26 +409,17 @@ function detectRedundancies(tools: ToolEntry[]): RedundancyFlag[] {
   return flags;
 }
 
-// ---------------------------------------------------------------------------
-// Health Score Calculation
-// ---------------------------------------------------------------------------
-
 export function calculateHealthScore(
   savingsPercentage: number,
   redundancyCount: number,
   highSeverityCount: number
 ): number {
-  // Start at 100, deduct for issues
   let score = 100;
-  score -= savingsPercentage * 0.8;        // Waste drags score down
-  score -= redundancyCount * 12;            // Each redundancy is a significant issue
-  score -= highSeverityCount * 8;           // High severity findings
+  score -= savingsPercentage * 0.8;
+  score -= redundancyCount * 12;
+  score -= highSeverityCount * 8;
   return clamp(Math.round(score), 0, 100);
 }
-
-// ---------------------------------------------------------------------------
-// Tool Breakdown Builder
-// ---------------------------------------------------------------------------
 
 function buildToolBreakdown(
   tools: ToolEntry[],
@@ -511,10 +438,6 @@ function buildToolBreakdown(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Recommendation Factory
-// ---------------------------------------------------------------------------
-
 interface RecInput {
   type: RecommendationType;
   severity: Severity;
@@ -528,7 +451,7 @@ interface RecInput {
   reasoning: string;
 }
 
-function makeRec(input: RecInput): Recommendation {
+function makeRec(nextId: () => string, input: RecInput): Recommendation {
   const monthlySavings = Math.max(0, input.currentMonthlyCost - input.optimizedMonthlyCost);
   return {
     id: nextId(),

@@ -1,7 +1,3 @@
-// =============================================================================
-// Trim.ai — Lead Capture API Route
-// =============================================================================
-
 import { NextRequest, NextResponse } from 'next/server';
 import { leadSchema } from '@/lib/validations';
 import { supabaseAdmin } from '@/lib/supabase/server';
@@ -19,7 +15,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json<ApiError>(
+        { success: false, error: 'Invalid JSON body' },
+        { status: 400 }
+      );
+    }
     const parsed = leadSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json<ApiError>(
@@ -28,7 +32,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save lead
     const { error } = await supabaseAdmin.from('leads').insert({
       email: parsed.data.email,
       company_name: parsed.data.companyName || null,
@@ -45,7 +48,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Optional: send email via Resend (non-blocking)
     sendConfirmationEmail(parsed.data.email).catch(console.error);
 
     return NextResponse.json<LeadApiResponse>({

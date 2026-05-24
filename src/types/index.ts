@@ -1,11 +1,3 @@
-// =============================================================================
-// Trim.ai — Core TypeScript Types
-// =============================================================================
-// All shared types for the audit engine, form inputs, API responses, and DB.
-// Keep this file as the single source of truth for data shapes.
-// =============================================================================
-
-/** Supported AI tool identifiers */
 export type ToolId =
   | 'cursor'
   | 'github_copilot'
@@ -16,7 +8,6 @@ export type ToolId =
   | 'gemini'
   | 'windsurf';
 
-/** Use-case categories for AI tool usage */
 export type UseCase =
   | 'coding'
   | 'writing'
@@ -25,18 +16,13 @@ export type UseCase =
   | 'customer_support'
   | 'general';
 
-/** Pricing plan category */
 export type PlanCategory = 'ide' | 'chat' | 'api' | 'platform';
-
-// ---------------------------------------------------------------------------
-// Pricing Data Types
-// ---------------------------------------------------------------------------
 
 export interface PricingTier {
   planId: string;
   tool: ToolId;
   planName: string;
-  pricePerSeat: number; // monthly USD per seat
+  pricePerSeat: number;
   isPayAsYouGo?: boolean;
   minSeats?: number;
   maxSeats?: number;
@@ -47,15 +33,11 @@ export interface PricingTier {
 export interface ToolMeta {
   id: ToolId;
   name: string;
-  icon: string; // emoji or icon identifier
+  icon: string;
   description: string;
   category: PlanCategory;
   plans: PricingTier[];
 }
-
-// ---------------------------------------------------------------------------
-// Form Input Types
-// ---------------------------------------------------------------------------
 
 export interface ToolEntry {
   toolId: ToolId;
@@ -70,10 +52,6 @@ export interface AuditInput {
   companyName?: string;
   teamSize?: number;
 }
-
-// ---------------------------------------------------------------------------
-// Audit Engine Output Types
-// ---------------------------------------------------------------------------
 
 export type RecommendationType =
   | 'downgrade_plan'
@@ -110,7 +88,7 @@ export interface AuditResult {
   totalMonthlySavings: number;
   totalAnnualSavings: number;
   savingsPercentage: number;
-  healthScore: number; // 0-100
+  healthScore: number;
   recommendations: Recommendation[];
   toolBreakdown: ToolBreakdownItem[];
   redundancies: RedundancyFlag[];
@@ -129,10 +107,6 @@ export interface RedundancyFlag {
   reason: string;
   potentialSavings: number;
 }
-
-// ---------------------------------------------------------------------------
-// API / Database Types
-// ---------------------------------------------------------------------------
 
 export interface AuditRecord {
   id: string;
@@ -160,10 +134,6 @@ export interface LeadRecord {
   marketingConsent: boolean;
   createdAt: string;
 }
-
-// ---------------------------------------------------------------------------
-// API Response Types
-// ---------------------------------------------------------------------------
 
 export interface AuditApiResponse {
   success: boolean;

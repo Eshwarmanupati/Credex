@@ -1,33 +1,85 @@
-// =============================================================================
-// Trim.ai — AI Summary Generator (Anthropic Claude)
-// =============================================================================
-// Generates a narrative executive summary from structured audit results.
-// Falls back to a template-based summary if the API call fails.
-// =============================================================================
-
 import Anthropic from '@anthropic-ai/sdk';
 import type { AuditResult } from '@/types';
-import { TOOLS } from './pricing-data';
 import { formatCurrency } from './utils';
 
 let anthropicClient: Anthropic | null = null;
 
-function getClient(): Anthropic | null {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
+function isPlaceholderKey(key: string | undefined): boolean {
+  if (!key) return true;
+  const normalized = key.toLowerCase();
+  return (
+    normalized === 'sk-ant-your-key' ||
+    normalized === 'your-gemini-key' ||
+    normalized === 'your-key' ||
+    normalized.includes('your-key') ||
+    normalized.includes('placeholder')
+  );
+}
+
+function getAnthropicClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (isPlaceholderKey(apiKey)) return null;
   if (!anthropicClient) {
-    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    anthropicClient = new Anthropic({ apiKey: apiKey! });
   }
   return anthropicClient;
 }
 
-export async function generateAuditSummary(result: AuditResult): Promise<string> {
+async function generateSummaryWithGemini(result: AuditResult): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (isPlaceholderKey(apiKey)) return null;
+
   try {
-    const client = getClient();
-    if (!client) return generateFallbackSummary(result);
+    const prompt = buildPrompt(result);
+    const systemPrompt = `You are a concise FinOps analyst writing executive audit summaries. Write in second person ("your team"). Be specific with numbers. Keep it to 3-4 sentences maximum. No markdown, no bullet points — just clean prose. Sound authoritative but helpful, not salesy.`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          generationConfig: {
+            maxOutputTokens: 600,
+            temperature: 0.2,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(`Gemini API returned status ${response.status}:`, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text && text.trim().length > 20) {
+      return text.trim();
+    }
+    return null;
+  } catch (error) {
+    console.error('Gemini API error during summary generation:', error);
+    return null;
+  }
+}
+
+export async function generateAuditSummary(result: AuditResult): Promise<string> {
+  const geminiSummary = await generateSummaryWithGemini(result);
+  if (geminiSummary) return geminiSummary;
+
+  try {
+    const client = getAnthropicClient();
+    if (!client) {
+      return generateFallbackSummary(result);
+    }
 
     const prompt = buildPrompt(result);
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-latest',
       max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
       system: `You are a concise FinOps analyst writing executive audit summaries. Write in second person ("your team"). Be specific with numbers. Keep it to 3-4 sentences maximum. No markdown, no bullet points — just clean prose. Sound authoritative but helpful, not salesy.`,

@@ -1,7 +1,3 @@
-// =============================================================================
-// Trim.ai — Audit API Route
-// =============================================================================
-
 import { NextRequest, NextResponse } from 'next/server';
 import { auditInputSchema } from '@/lib/validations';
 import { runAudit } from '@/lib/audit-engine';
@@ -12,7 +8,6 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit';
 import type { AuditApiResponse, ApiError } from '@/types';
 
 export async function POST(request: NextRequest) {
-  // Rate limiting: 5 audits per minute per IP
   const ip = getClientIp(request);
   const rl = rateLimit(ip, { maxRequests: 5, windowSeconds: 60 });
   if (!rl.allowed) {
@@ -23,8 +18,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Parse and validate input
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json<ApiError>(
+        { success: false, error: 'Invalid JSON body', code: 'PARSE_ERROR' },
+        { status: 400 }
+      );
+    }
     const parsed = auditInputSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json<ApiError>(
@@ -33,16 +35,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Run deterministic audit engine
     const result = runAudit(parsed.data);
-
-    // Generate AI summary (with fallback)
     const aiSummary = await generateAuditSummary(result);
-
-    // Generate unique share slug
     const shareSlug = generateShareSlug();
 
-    // Save to Supabase
     try {
       await supabaseAdmin.from('audits').insert({
         share_slug: shareSlug,
@@ -59,7 +55,6 @@ export async function POST(request: NextRequest) {
       });
     } catch (dbError) {
       console.error('Supabase insert error:', dbError);
-      // Don't fail the request if DB save fails — return results anyway
     }
 
     return NextResponse.json<AuditApiResponse>({

@@ -1,18 +1,11 @@
-// =============================================================================
-// Trim.ai — Simple In-Memory Rate Limiter
-// =============================================================================
-// Sliding window rate limiter using Map. Sufficient for MVP — upgrade to
-// Upstash Redis for production multi-instance deployments.
-// =============================================================================
-
 interface RateLimitEntry {
   count: number;
   resetAt: number;
 }
 
+ 
 const store = new Map<string, RateLimitEntry>();
 
-// Clean up expired entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of store.entries()) {
@@ -23,9 +16,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 interface RateLimitConfig {
-  /** Maximum requests allowed in the window */
   maxRequests: number;
-  /** Window duration in seconds */
   windowSeconds: number;
 }
 
@@ -43,7 +34,6 @@ export function rateLimit(
   const entry = store.get(identifier);
 
   if (!entry || now > entry.resetAt) {
-    // New window
     const resetAt = now + config.windowSeconds * 1000;
     store.set(identifier, { count: 1, resetAt });
     return { allowed: true, remaining: config.maxRequests - 1, resetAt };
@@ -61,9 +51,6 @@ export function rateLimit(
   };
 }
 
-/**
- * Extract client IP from request headers for rate limiting.
- */
 export function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {

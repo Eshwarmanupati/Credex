@@ -1,10 +1,3 @@
-// =============================================================================
-// Trim.ai — Supabase Server Client
-// =============================================================================
-// Uses the service role key for server-side operations (inserts, updates).
-// NEVER import this file from client components.
-// =============================================================================
-
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

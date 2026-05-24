@@ -1,6 +1,6 @@
 # AI Tool Pricing Database
 
-This document outlines the snapshot of AI tool pricing used by the Trim.ai engine as of **May 2025**.
+This document outlines the snapshot of AI tool pricing used by the Trim.ai engine as of **May 2026**.
 
 *Note: In the actual codebase, this data is structured in `src/lib/pricing-data.ts`.*
 

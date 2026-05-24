@@ -1,31 +1,16 @@
-// =============================================================================
-// Trim.ai — Zustand Audit Store
-// =============================================================================
-// Manages multi-step form state. Persists tool selections and configuration
-// across form steps so users don't lose progress on navigation.
-// =============================================================================
-
 import { create } from 'zustand';
 import type { ToolId, ToolEntry, UseCase, AuditResult } from '@/types';
 
 interface AuditFormState {
-  // Step 1: Tool selection
   selectedTools: ToolId[];
-
-  // Step 2: Per-tool configuration
   toolEntries: ToolEntry[];
-
-  // Current step (0-indexed)
   currentStep: number;
-
-  // Results (after submission)
   result: AuditResult | null;
   aiSummary: string | null;
   shareSlug: string | null;
   isLoading: boolean;
   error: string | null;
 
-  // Actions
   setSelectedTools: (tools: ToolId[]) => void;
   toggleTool: (toolId: ToolId) => void;
   setToolEntries: (entries: ToolEntry[]) => void;
@@ -62,7 +47,6 @@ export const useAuditStore = create<AuditFormState>((set) => ({
         ? state.selectedTools.filter((t) => t !== toolId)
         : [...state.selectedTools, toolId];
 
-      // Sync toolEntries: add default entries for new tools, remove deselected
       const toolEntries = selectedTools.map((id) => {
         const existing = state.toolEntries.find((e) => e.toolId === id);
         return (

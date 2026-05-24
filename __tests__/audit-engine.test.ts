@@ -1,7 +1,3 @@
-// =============================================================================
-// Trim.ai — Audit Engine Unit Tests
-// =============================================================================
-
 import { describe, it, expect } from 'vitest';
 import { runAudit, calculateHealthScore } from '@/lib/audit-engine';
 import type { AuditInput, ToolEntry } from '@/types';
@@ -9,10 +5,6 @@ import type { AuditInput, ToolEntry } from '@/types';
 function makeInput(tools: ToolEntry[]): AuditInput {
   return { tools };
 }
-
-// ---------------------------------------------------------------------------
-// Rule 1: Seat-Tier Mismatch
-// ---------------------------------------------------------------------------
 
 describe('Rule 1: Seat-Tier Mismatch', () => {
   it('flags Cursor Business with 1 seat as overkill', () => {
@@ -48,7 +40,7 @@ describe('Rule 1: Seat-Tier Mismatch', () => {
     ]));
     const rec = result.recommendations.find((r) => r.toolId === 'github_copilot' && r.type === 'downgrade_plan');
     expect(rec).toBeDefined();
-    expect(rec!.monthlySavings).toBe(60); // (39-19) * 3
+    expect(rec!.monthlySavings).toBe(60);
   });
 
   it('flags ChatGPT Plus with 5+ seats for Team upgrade', () => {
@@ -68,10 +60,6 @@ describe('Rule 1: Seat-Tier Mismatch', () => {
     expect(rec!.monthlySavings).toBe(20);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Rule 2: Redundant Subscriptions
-// ---------------------------------------------------------------------------
 
 describe('Rule 2: Redundant Subscriptions', () => {
   it('detects IDE overlap (Cursor + Copilot)', () => {
@@ -103,10 +91,6 @@ describe('Rule 2: Redundant Subscriptions', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Rule 3: API vs Subscription
-// ---------------------------------------------------------------------------
-
 describe('Rule 3: API vs Subscription Arbitrage', () => {
   it('flags ChatGPT Plus as redundant with high OpenAI API usage', () => {
     const result = runAudit(makeInput([
@@ -127,10 +111,6 @@ describe('Rule 3: API vs Subscription Arbitrage', () => {
     expect(rec).toBeDefined();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Rule 4: Overpowered Plan
-// ---------------------------------------------------------------------------
 
 describe('Rule 4: Overpowered Plan', () => {
   it('flags Claude Max 20x for coding use case', () => {
@@ -161,10 +141,6 @@ describe('Rule 4: Overpowered Plan', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Rule 6: Volume / Credex Hook
-// ---------------------------------------------------------------------------
-
 describe('Rule 6: Volume Consolidation', () => {
   it('triggers Credex consultation for $500+ spend', () => {
     const result = runAudit(makeInput([
@@ -193,10 +169,6 @@ describe('Rule 6: Volume Consolidation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Health Score
-// ---------------------------------------------------------------------------
-
 describe('Health Score', () => {
   it('returns 100 for a perfectly optimized stack', () => {
     const result = runAudit(makeInput([
@@ -221,10 +193,6 @@ describe('Health Score', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Integration: Full Audit
-// ---------------------------------------------------------------------------
-
 describe('Full Audit Integration', () => {
   it('processes a realistic multi-tool stack', () => {
     const result = runAudit(makeInput([
@@ -247,7 +215,6 @@ describe('Full Audit Integration', () => {
     const result = runAudit(makeInput([
       { toolId: 'cursor', planId: 'cursor_pro', seats: 5, monthlySpend: 100, useCase: 'coding' },
     ]));
-    // Pro with 5 seats is fine — no seat mismatch, no redundancy
     expect(result.totalCurrentSpend).toBe(100);
     expect(result.healthScore).toBeGreaterThanOrEqual(80);
   });

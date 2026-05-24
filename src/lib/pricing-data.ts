@@ -1,16 +1,4 @@
-// =============================================================================
-// Trim.ai — AI Tool Pricing Database
-// =============================================================================
-// Static, normalized pricing data for all supported AI tools.
-// Sources: Official pricing pages as of May 2025.
-// See docs/PRICING_DATA.md for detailed source links.
-// =============================================================================
-
 import type { ToolMeta, ToolId, PricingTier } from '@/types';
-
-// ---------------------------------------------------------------------------
-// Individual Tool Definitions
-// ---------------------------------------------------------------------------
 
 export const TOOLS: Record<ToolId, ToolMeta> = {
   cursor: {
@@ -278,43 +266,32 @@ export const TOOLS: Record<ToolId, ToolMeta> = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
-
-/** Get all tools as an array */
 export function getAllTools(): ToolMeta[] {
   return Object.values(TOOLS);
 }
 
-/** Get a specific tool by ID */
 export function getToolById(toolId: ToolId): ToolMeta {
   return TOOLS[toolId];
 }
 
-/** Get a specific plan from a tool */
 export function getPlan(toolId: ToolId, planId: string): PricingTier | undefined {
   return TOOLS[toolId]?.plans.find((p) => p.planId === planId);
 }
 
-/** Get all plan IDs for a tool */
 export function getPlanIds(toolId: ToolId): string[] {
   return TOOLS[toolId]?.plans.map((p) => p.planId) ?? [];
 }
 
-/** Get the cheapest non-free plan for a tool */
 export function getCheapestPaidPlan(toolId: ToolId): PricingTier | undefined {
   return TOOLS[toolId]?.plans
     .filter((p) => p.pricePerSeat > 0)
     .sort((a, b) => a.pricePerSeat - b.pricePerSeat)[0];
 }
 
-/** Check if two tools are in the same category (potential redundancy) */
 export function isSameCategory(toolA: ToolId, toolB: ToolId): boolean {
   return TOOLS[toolA]?.category === TOOLS[toolB]?.category;
 }
 
-/** Get all tools in a specific category */
 export function getToolsByCategory(category: 'ide' | 'chat' | 'api' | 'platform'): ToolMeta[] {
   return Object.values(TOOLS).filter((t) => t.category === category);
 }

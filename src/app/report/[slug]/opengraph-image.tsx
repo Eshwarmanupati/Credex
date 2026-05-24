@@ -1,9 +1,6 @@
 import { ImageResponse } from 'next/og';
-import { supabaseAdmin } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 
-export const runtime = 'edge';
-
-// Image metadata
 export const alt = 'Trim.ai Audit Report';
 export const size = {
   width: 1200,
@@ -11,13 +8,26 @@ export const size = {
 };
 export const contentType = 'image/png';
 
-export default async function Image({ params }: { params: { slug: string } }) {
+export default async function Image({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   try {
-    // We must await params in Next.js 15+ if accessing properties dynamically, but since we are just getting slug, it's fine.
-    // However, to be safe with Next.js 15 dynamic routing changes, we await it if it were a promise. In app router it might be a promise.
-    const { slug } = await Promise.resolve(params);
+    const { slug } = await params;
 
-    const { data: audit, error } = await supabaseAdmin
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('your-project')) {
+      throw new Error('Supabase not configured');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: audit, error } = await supabase
       .from('audits')
       .select('health_score, savings_amount')
       .eq('share_slug', slug)
@@ -54,7 +64,7 @@ export default async function Image({ params }: { params: { slug: string } }) {
               style={{
                 width: '60px',
                 height: '60px',
-                backgroundColor: '#10B981', // Emerald 500
+                backgroundColor: '#10B981',
                 borderRadius: '16px',
                 display: 'flex',
                 alignItems: 'center',
@@ -112,8 +122,7 @@ export default async function Image({ params }: { params: { slug: string } }) {
         ...size,
       }
     );
-  } catch (e) {
-    // Fallback image if not found
+  } catch {
     return new ImageResponse(
       (
         <div

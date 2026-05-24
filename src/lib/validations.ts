@@ -1,10 +1,3 @@
-// =============================================================================
-// Trim.ai — Zod Validation Schemas
-// =============================================================================
-// Shared validation schemas for form inputs and API requests.
-// Used on both client (React Hook Form) and server (API routes).
-// =============================================================================
-
 import { z } from 'zod';
 
 export const toolIdSchema = z.enum([

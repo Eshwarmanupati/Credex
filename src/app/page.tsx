@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { getAllTools } from "@/lib/pricing-data";
+import { ToolIcon } from "@/components/ui/tool-icon";
 
 export default function HomePage() {
   const tools = getAllTools();
   
   return (
     <main className="flex flex-col items-center justify-center min-h-screen">
-      {/* Navbar */}
       <nav className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold">
@@ -21,7 +21,6 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* Hero Section */}
       <section className="w-full max-w-6xl mx-auto px-4 sm:px-6 pt-20 pb-32 flex flex-col items-center text-center">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border/60 bg-card/40 backdrop-blur-sm text-sm text-muted-foreground mb-8 animate-fade-in">
           <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -54,21 +53,19 @@ export default function HomePage() {
           </span>
         </div>
 
-        {/* Supported Tools Ticker */}
         <div className="w-full max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '400ms' }}>
           <p className="text-sm text-muted-foreground font-medium mb-6 uppercase tracking-wider">Works with your favorite AI tools</p>
           <div className="flex flex-wrap justify-center gap-4 sm:gap-8 opacity-70 grayscale transition-all hover:grayscale-0">
-             {tools.slice(0, 6).map(tool => (
+             {tools.slice(0, 8).map(tool => (
                <div key={tool.id} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border/50">
-                 <span className="text-xl">{tool.icon}</span>
-                 <span className="font-medium">{tool.name}</span>
+                 <ToolIcon toolId={tool.id} className="w-5 h-5 text-foreground" />
+                 <span className="font-medium text-sm">{tool.name}</span>
                </div>
              ))}
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
       <section className="w-full bg-secondary/50 border-y border-border/50 py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
@@ -83,7 +80,7 @@ export default function HomePage() {
               </div>
               <h3 className="text-xl font-bold mb-3">Seat Optimization</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Paying for Enterprise features you don't use? We detect oversized team plans and recommend right-sized individual or pro tiers based on your actual headcount.
+                Paying for Enterprise features you don&apos;t use? We detect oversized team plans and recommend right-sized individual or pro tiers based on your actual headcount.
               </p>
             </div>
             
@@ -104,18 +101,17 @@ export default function HomePage() {
               </div>
               <h3 className="text-xl font-bold mb-3">API Arbitrage</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Sometimes $20/month subscriptions are cheaper than API calls. Sometimes it's the other way around. We analyze your spend to recommend the most cost-effective interface.
+                Sometimes $20/month subscriptions are cheaper than API calls. Sometimes it&apos;s the other way around. We analyze your spend to recommend the most cost-effective interface.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Credex Hook */}
       <section className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-24 text-center">
         <div className="glass p-12 rounded-3xl border-primary/20 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4 relative z-10">Spending over $1,000/month?</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold mb-4 relative z-10">Spending over $500/month on AI?</h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8 relative z-10">
             High-volume teams qualify for enterprise pricing. Get a free consultation with Credex specialists to negotiate volume discounts and unified billing.
           </p>
@@ -128,7 +124,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="w-full border-t border-border/50 py-12 text-center text-muted-foreground">
         <div className="flex items-center justify-center gap-2 mb-4">
           <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center text-foreground font-bold text-xs">
